@@ -1,22 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { mockProperties } from '@/lib/mockData';
+import { useWallet } from '@/lib/WalletContext';
 import PropertyCard from '@/components/PropertyCard';
 
 type FilterType = 'all' | 'active' | 'sold_out';
 
 export default function MarketplacePage() {
+  const { allProperties } = useWallet();
   const [filter, setFilter] = useState<FilterType>('all');
 
-  const filteredProperties = mockProperties.filter((p) => {
+  const filteredProperties = allProperties.filter((p) => {
     if (filter === 'all') return true;
     return p.status === filter;
   });
 
-  const totalValue = mockProperties.reduce((sum, p) => sum + p.propertyValue, 0);
-  const activeCount = mockProperties.filter((p) => p.status === 'active').length;
-  const totalTokenized = mockProperties.reduce((sum, p) => sum + p.totalTokens, 0);
+  const totalValue = allProperties.reduce((sum, p) => sum + p.propertyValue, 0);
+  const activeCount = allProperties.filter((p) => p.status === 'active').length;
+  const totalTokenized = allProperties.reduce((sum, p) => sum + p.totalTokens, 0);
 
   return (
     <div className="min-h-screen bg-[#0f172a]">
@@ -85,7 +86,7 @@ export default function MarketplacePage() {
             ))}
           </div>
           <p className="text-sm text-slate-500">
-            Showing {filteredProperties.length} of {mockProperties.length} properties
+            Showing {filteredProperties.length} of {allProperties.length} properties
           </p>
         </div>
 

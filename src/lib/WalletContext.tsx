@@ -4,7 +4,8 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { BrowserProvider, JsonRpcSigner, Contract } from 'ethers';
 import { CONTRACT_ADDRESSES, PROPERTY_TOKEN_IDS, ALL_TOKEN_IDS, SUPPORTED_CHAIN_IDS, CHAIN_NAMES, formatMusdt, parseMusdt, txExplorerUrl, isDeployed } from './contractAddresses';
 import { MUSDT_ABI, PROPERTY_TOKEN_ABI, MARKETPLACE_ABI, DIVIDEND_VAULT_ABI } from './contractAbis';
-import type { Transaction, Listing } from './mockData';
+import { mockProperties } from './mockData';
+import type { Transaction, Listing, Property } from './mockData';
 
 export interface OnChainTx {
   txHash: string;
@@ -55,6 +56,7 @@ interface WalletContextType {
   createPropertyOnChain: (tokenId: number, priceMusdt: number, supply: number) => Promise<boolean>;
   primarySalesBalance: bigint;
   allTransactions: OnChainTx[];
+  allProperties: Property[];
   refreshBalances: () => Promise<void>;
 }
 
@@ -84,6 +86,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [primarySalesBalance, setPrimarySalesBalance] = useState<bigint>(0n);
   const [allTransactions, setAllTransactions] = useState<OnChainTx[]>([]);
+  const [allProperties, setAllProperties] = useState<Property[]>(mockProperties);
 
   const loadBalances = useCallback(async (
     addr: string,
@@ -117,7 +120,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setHoldings(newHoldings);
       setClaimableAmounts(newClaimable);
 
-      // Load secondary listings and all transactions from events
+      // Load secondary listings, all transactions, and on-chain properties
+      await loadProperties(prov);
       await loadListings(prov);
       await loadAllTransactions(prov);
     } catch (err) {
@@ -160,6 +164,55 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setListings(active);
     } catch (err) {
       console.error('loadListings error:', err);
+    }
+  }, []);
+
+  const loadProperties = useCallback(async (prov: BrowserProvider) => {
+    if (!isDeployed()) return;
+    try {
+      const marketplace = new Contract(CONTRACT_ADDRESSES.marketplace, MARKETPLACE_ABI, prov);
+      const events = await marketplace.queryFilter(marketplace.filters.PrimaryConfigured());
+
+      const seen = new Set<number>();
+      const props: Property[] = [...mockProperties];
+
+      for (const e of events) {
+        const args = (e as unknown as { args: [bigint, bigint, bigint] }).args;
+        const tokenId = Number(args[0]);
+        if (seen.has(tokenId)) continue;
+        seen.add(tokenId);
+
+        // Already in mockData — update remaining supply from chain
+        const existing = props.findIndex(p => p.id === `prop-00${tokenId}`);
+        if (existing !== -1) {
+          const listing = await marketplace.primaryListings(tokenId) as { remainingSupply: bigint };
+          props[existing] = {
+            ...props[existing],
+            remainingTokens: Number(listing.remainingSupply),
+            status: listing.remainingSupply > 0n ? 'active' : 'sold_out',
+          };
+        } else {
+          // New on-chain property not in mockData
+          const listing = await marketplace.primaryListings(tokenId) as { pricePerToken: bigint; remainingSupply: bigint };
+          props.push({
+            id: `prop-00${tokenId}`,
+            name: `Property #${tokenId}`,
+            description: 'On-chain registered property.',
+            imageUrl: `https://loremflickr.com/800/500/beachfront,condominium,luxury?lock=${tokenId * 10}`,
+            location: 'Thailand',
+            propertyValue: 0,
+            totalTokens: Number(args[2]),
+            remainingTokens: Number(listing.remainingSupply),
+            tokenPriceMusdt: Number(listing.pricePerToken) / 1e6,
+            tokenId: `COAST-NEW-${tokenId}`,
+            status: listing.remainingSupply > 0n ? 'active' : 'sold_out',
+            annualYield: 0,
+          });
+        }
+      }
+      setAllProperties(props);
+    } catch (err) {
+      console.error('loadProperties error:', err);
     }
   }, []);
 
@@ -625,6 +678,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         createPropertyOnChain,
         primarySalesBalance,
         allTransactions,
+        allProperties,
         refreshBalances,
       }}
     >
