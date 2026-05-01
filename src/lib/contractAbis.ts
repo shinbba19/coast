@@ -26,6 +26,7 @@ export const PROPERTY_TOKEN_ABI = [
   "function maxSupply(uint256 tokenId) view returns (uint256)",
   "function tokenPrice(uint256 tokenId) view returns (uint256)",
   "function propertyRegistered(uint256 tokenId) view returns (bool)",
+  "function registerProperty(uint256 tokenId, uint256 priceInMusdt, uint256 maxSupply)",
   "event TransferSingle(address indexed operator, address indexed from, address indexed to, uint256 id, uint256 value)",
   "event ApprovalForAll(address indexed account, address indexed operator, bool approved)",
 ] as const;

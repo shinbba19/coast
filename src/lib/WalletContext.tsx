@@ -52,6 +52,7 @@ interface WalletContextType {
   mintTestTokens: () => Promise<boolean>;
   depositDividend: (propertyId: string, amountMusdt: number) => Promise<boolean>;
   withdrawPrimarySales: (to: string, amount: number) => Promise<boolean>;
+  createPropertyOnChain: (tokenId: number, priceMusdt: number, supply: number) => Promise<boolean>;
   primarySalesBalance: bigint;
   allTransactions: OnChainTx[];
   refreshBalances: () => Promise<void>;
@@ -567,6 +568,31 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return result !== false;
   }, [provider, signer]);
 
+  // ── Create property on-chain (admin) ─────────────────────────────────────
+
+  const createPropertyOnChain = useCallback(async (
+    tokenId: number,
+    priceMusdt: number,
+    supply: number
+  ): Promise<boolean> => {
+    const result = await withTx(async (sgn) => {
+      const propertyToken = new Contract(CONTRACT_ADDRESSES.propertyToken, PROPERTY_TOKEN_ABI, sgn);
+      const marketplace = new Contract(CONTRACT_ADDRESSES.marketplace, MARKETPLACE_ABI, sgn);
+      const priceAtoms = parseMusdt(priceMusdt);
+      const supplyBig = BigInt(supply);
+      const tokenIdBig = BigInt(tokenId);
+
+      const registerTx = await propertyToken.registerProperty(tokenIdBig, priceAtoms, supplyBig);
+      await (registerTx as { wait: () => Promise<unknown> }).wait();
+
+      const configureTx = await marketplace.configurePrimary(tokenIdBig, priceAtoms, supplyBig);
+      const receipt = await (configureTx as { wait: () => Promise<{ hash: string }> }).wait();
+      setTxHash(receipt.hash);
+      return true;
+    });
+    return result !== false;
+  }, [provider, signer]);
+
   const mUSDTBalanceFormatted = formatMusdt(mUSDTBalance);
   const txExplorerLink = txHash && chainId ? txExplorerUrl(chainId, txHash) : null;
 
@@ -596,6 +622,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         mintTestTokens,
         depositDividend,
         withdrawPrimarySales,
+        createPropertyOnChain,
         primarySalesBalance,
         allTransactions,
         refreshBalances,

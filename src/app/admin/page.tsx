@@ -27,6 +27,7 @@ interface DividendDeposit {
 }
 
 interface NewProperty {
+  tokenId: string;
   name: string;
   location: string;
   propertyValue: string;
@@ -37,6 +38,7 @@ interface NewProperty {
 }
 
 const emptyNewProperty: NewProperty = {
+  tokenId: '',
   name: '',
   location: '',
   propertyValue: '',
@@ -52,6 +54,7 @@ export default function AdminPage() {
     address,
     depositDividend,
     withdrawPrimarySales,
+    createPropertyOnChain,
     primarySalesBalance,
     allTransactions,
     isLoading,
@@ -152,33 +155,44 @@ export default function AdminPage() {
     }
   }
 
-  function handleCreateProperty() {
+  async function handleCreateProperty() {
     const fields = Object.values(newProperty);
     if (fields.some((v) => !v.trim())) {
       setCreateMsg('Please fill in all fields.');
       return;
     }
-    // NOTE: On-chain property creation goes through configurePrimary on the contract.
-    // This prototype form stores the property locally for UI preview only.
-    const p: AdminProperty = {
-      id: `prop-${Date.now()}`,
-      name: newProperty.name,
-      description: newProperty.description,
-      imageUrl: `https://picsum.photos/seed/new${Date.now()}/800/500`,
-      location: newProperty.location,
-      propertyValue: parseFloat(newProperty.propertyValue),
-      totalTokens: parseInt(newProperty.totalTokens),
-      remainingTokens: parseInt(newProperty.totalTokens),
-      tokenPriceMusdt: parseFloat(newProperty.tokenPriceMusdt),
-      tokenId: `COAST-NEW-${Date.now()}`,
-      status: 'active',
-      annualYield: parseFloat(newProperty.annualYield),
-      active: true,
-      tokensSold: 0,
-    };
-    setAdminProperties((prev) => [...prev, p]);
-    setCreateMsg(`✓ Property "${p.name}" saved locally. To publish on-chain, call configurePrimary on the contract.`);
-    setNewProperty(emptyNewProperty);
+    const tokenId = parseInt(newProperty.tokenId);
+    const totalTokens = parseInt(newProperty.totalTokens);
+    const tokenPriceMusdt = parseFloat(newProperty.tokenPriceMusdt);
+    if (isNaN(tokenId) || tokenId < 1) {
+      setCreateMsg('Token ID must be a positive number.');
+      return;
+    }
+    setCreateMsg('');
+    const ok = await createPropertyOnChain(tokenId, tokenPriceMusdt, totalTokens);
+    if (ok) {
+      const p: AdminProperty = {
+        id: `prop-00${tokenId}`,
+        name: newProperty.name,
+        description: newProperty.description,
+        imageUrl: `https://loremflickr.com/800/500/beachfront,condominium,luxury?lock=${tokenId * 10}`,
+        location: newProperty.location,
+        propertyValue: parseFloat(newProperty.propertyValue),
+        totalTokens,
+        remainingTokens: totalTokens,
+        tokenPriceMusdt,
+        tokenId: `COAST-NEW-${tokenId}`,
+        status: 'active',
+        annualYield: parseFloat(newProperty.annualYield),
+        active: true,
+        tokensSold: 0,
+      };
+      setAdminProperties((prev) => [...prev, p]);
+      setCreateMsg(`✓ Property "${p.name}" registered on-chain (tokenId ${tokenId}).`);
+      setNewProperty(emptyNewProperty);
+    } else {
+      setCreateMsg('Transaction failed. Make sure you are using the admin wallet.');
+    }
   }
 
   return (
@@ -666,17 +680,30 @@ export default function AdminPage() {
               </p>
               {/* Note: Full on-chain creation requires calling configurePrimary on the contract.
                   This form saves the property locally for UI preview only (prototype behavior). */}
-              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-6">
-                <p className="text-blue-300 text-xs font-medium">Blockchain Feature Note</p>
-                <p className="text-blue-400/70 text-xs mt-0.5">
-                  On-chain property creation is done via <code>configurePrimary</code> on the
-                  PropertyToken contract. This form saves locally for prototype preview; real
-                  deployment requires a separate contract call from the deployer wallet.
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3 mb-6">
+                <p className="text-emerald-300 text-xs font-medium">On-Chain Creation</p>
+                <p className="text-emerald-400/70 text-xs mt-0.5">
+                  Submits 2 transactions: <code>registerProperty</code> on CoastPropertyToken then <code>configurePrimary</code> on Marketplace. Requires admin wallet.
                 </p>
               </div>
 
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-1.5">
+                      Token ID <span className="text-slate-600">(must be unique, e.g. 6)</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={newProperty.tokenId}
+                      onChange={(e) =>
+                        setNewProperty((prev) => ({ ...prev, tokenId: e.target.value }))
+                      }
+                      placeholder="e.g. 6"
+                      className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 placeholder-slate-600"
+                    />
+                  </div>
                   <div>
                     <label className="block text-sm text-slate-400 mb-1.5">Property Name</label>
                     <input
@@ -786,10 +813,20 @@ export default function AdminPage() {
 
                 <button
                   onClick={handleCreateProperty}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
+                  disabled={isLoading || !isAdmin}
+                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
                 >
-                  Save Property (Local Preview)
+                  {isLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="animate-spin inline-block">⏳</span> Registering on-chain...
+                    </span>
+                  ) : (
+                    'Create Property On-Chain'
+                  )}
                 </button>
+                {!isAdmin && connected && (
+                  <p className="text-xs text-amber-400 text-center">Admin wallet required.</p>
+                )}
               </div>
             </div>
           </div>
