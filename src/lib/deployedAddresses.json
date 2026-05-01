@@ -1,0 +1,10 @@
+{
+  "network": "sepolia",
+  "chainId": "11155111",
+  "deployer": "0x79e7f2Dd3d28C72E8b9234b427EE99B25adD82f6",
+  "musdt": "0xfa67cB0de2Ce3eb1dC2E744640455C4d3e06eA5f",
+  "propertyToken": "0xB3E3D797507811766A70DACD810A79773DB028aA",
+  "marketplace": "0x9CA71603118C797A4eb966FF085207dF96258E1b",
+  "dividendVault": "0x3ec87731e8c8BE22567d73C665D1eFa120843a25",
+  "deployedAt": "2026-05-01T23:06:00.000Z"
+}
