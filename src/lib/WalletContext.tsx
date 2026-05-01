@@ -635,8 +635,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const supplyBig = BigInt(supply);
       const tokenIdBig = BigInt(tokenId);
 
-      const registerTx = await propertyToken.registerProperty(tokenIdBig, priceAtoms, supplyBig);
-      await (registerTx as { wait: () => Promise<unknown> }).wait();
+      // Skip registerProperty if already registered (handles retry after partial failure)
+      const alreadyRegistered = await propertyToken.propertyRegistered(tokenIdBig) as boolean;
+      if (!alreadyRegistered) {
+        const registerTx = await propertyToken.registerProperty(tokenIdBig, priceAtoms, supplyBig);
+        await (registerTx as { wait: () => Promise<unknown> }).wait();
+      }
 
       const configureTx = await marketplace.configurePrimary(tokenIdBig, priceAtoms, supplyBig);
       const receipt = await (configureTx as { wait: () => Promise<{ hash: string }> }).wait();
