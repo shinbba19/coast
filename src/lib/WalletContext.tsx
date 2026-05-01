@@ -6,6 +6,16 @@ import { CONTRACT_ADDRESSES, PROPERTY_TOKEN_IDS, ALL_TOKEN_IDS, SUPPORTED_CHAIN_
 import { MUSDT_ABI, PROPERTY_TOKEN_ABI, MARKETPLACE_ABI, DIVIDEND_VAULT_ABI } from './contractAbis';
 import type { Transaction, Listing } from './mockData';
 
+export interface OnChainTx {
+  txHash: string;
+  blockNumber: number;
+  type: 'primary_buy' | 'secondary_buy' | 'listing_created' | 'listing_cancelled' | 'dividend_deposit' | 'dividend_claim';
+  propertyId: string;
+  address: string;
+  tokenAmount: bigint;
+  musdtAmount: bigint;
+}
+
 // Extend window type for MetaMask
 declare global {
   interface Window {
@@ -43,6 +53,7 @@ interface WalletContextType {
   depositDividend: (propertyId: string, amountMusdt: number) => Promise<boolean>;
   withdrawPrimarySales: (to: string, amount: number) => Promise<boolean>;
   primarySalesBalance: bigint;
+  allTransactions: OnChainTx[];
   refreshBalances: () => Promise<void>;
 }
 
@@ -71,6 +82,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [primarySalesBalance, setPrimarySalesBalance] = useState<bigint>(0n);
+  const [allTransactions, setAllTransactions] = useState<OnChainTx[]>([]);
 
   const loadBalances = useCallback(async (
     addr: string,
@@ -104,12 +116,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setHoldings(newHoldings);
       setClaimableAmounts(newClaimable);
 
-      // Load secondary listings from events
+      // Load secondary listings and all transactions from events
       await loadListings(prov);
+      await loadAllTransactions(prov);
     } catch (err) {
       console.error('loadBalances error:', err);
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadListings = useCallback(async (prov: BrowserProvider) => {
     if (!isDeployed()) return;
@@ -146,6 +159,58 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setListings(active);
     } catch (err) {
       console.error('loadListings error:', err);
+    }
+  }, []);
+
+  const loadAllTransactions = useCallback(async (prov: BrowserProvider) => {
+    if (!isDeployed()) return;
+    try {
+      const marketplace = new Contract(CONTRACT_ADDRESSES.marketplace, MARKETPLACE_ABI, prov);
+      const dividendVault = new Contract(CONTRACT_ADDRESSES.dividendVault, DIVIDEND_VAULT_ABI, prov);
+
+      const tokenIdToPropId = (tokenId: bigint) =>
+        Object.entries(PROPERTY_TOKEN_IDS).find(([, tid]) => tid === tokenId)?.[0] ?? `prop-00${tokenId}`;
+
+      const [buyEvents, filledEvents, createdEvents, cancelledEvents, depositEvents, claimEvents] =
+        await Promise.all([
+          marketplace.queryFilter(marketplace.filters.TokensPurchased()),
+          marketplace.queryFilter(marketplace.filters.ListingFilled()),
+          marketplace.queryFilter(marketplace.filters.ListingCreated()),
+          marketplace.queryFilter(marketplace.filters.ListingCancelled()),
+          dividendVault.queryFilter(dividendVault.filters.DividendDeposited()),
+          dividendVault.queryFilter(dividendVault.filters.DividendClaimed()),
+        ]);
+
+      const txs: OnChainTx[] = [];
+
+      for (const e of buyEvents) {
+        const args = (e as unknown as { args: [string, bigint, bigint, bigint] }).args;
+        txs.push({ txHash: e.transactionHash, blockNumber: e.blockNumber, type: 'primary_buy', propertyId: tokenIdToPropId(args[1]), address: args[0], tokenAmount: args[2], musdtAmount: args[3] });
+      }
+      for (const e of filledEvents) {
+        const args = (e as unknown as { args: [bigint, string, bigint] }).args;
+        txs.push({ txHash: e.transactionHash, blockNumber: e.blockNumber, type: 'secondary_buy', propertyId: '', address: args[1], tokenAmount: 0n, musdtAmount: args[2] });
+      }
+      for (const e of createdEvents) {
+        const args = (e as unknown as { args: [bigint, string, bigint, bigint, bigint] }).args;
+        txs.push({ txHash: e.transactionHash, blockNumber: e.blockNumber, type: 'listing_created', propertyId: tokenIdToPropId(args[2]), address: args[1], tokenAmount: args[3], musdtAmount: args[4] });
+      }
+      for (const e of cancelledEvents) {
+        txs.push({ txHash: e.transactionHash, blockNumber: e.blockNumber, type: 'listing_cancelled', propertyId: '', address: '', tokenAmount: 0n, musdtAmount: 0n });
+      }
+      for (const e of depositEvents) {
+        const args = (e as unknown as { args: [bigint, bigint, bigint] }).args;
+        txs.push({ txHash: e.transactionHash, blockNumber: e.blockNumber, type: 'dividend_deposit', propertyId: tokenIdToPropId(args[0]), address: CONTRACT_ADDRESSES.deployer, tokenAmount: 0n, musdtAmount: args[1] });
+      }
+      for (const e of claimEvents) {
+        const args = (e as unknown as { args: [bigint, string, bigint] }).args;
+        txs.push({ txHash: e.transactionHash, blockNumber: e.blockNumber, type: 'dividend_claim', propertyId: tokenIdToPropId(args[0]), address: args[1], tokenAmount: 0n, musdtAmount: args[2] });
+      }
+
+      txs.sort((a, b) => b.blockNumber - a.blockNumber);
+      setAllTransactions(txs);
+    } catch (err) {
+      console.error('loadAllTransactions error:', err);
     }
   }, []);
 
@@ -532,6 +597,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         depositDividend,
         withdrawPrimarySales,
         primarySalesBalance,
+        allTransactions,
         refreshBalances,
       }}
     >

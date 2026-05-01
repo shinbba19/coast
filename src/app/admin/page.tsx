@@ -7,8 +7,8 @@ import {
   mockTransactions,
   type Property,
 } from '@/lib/mockData';
-import { useWallet } from '@/lib/WalletContext';
-import { CONTRACT_ADDRESSES } from '@/lib/contractAddresses';
+import { useWallet, type OnChainTx } from '@/lib/WalletContext';
+import { CONTRACT_ADDRESSES, txExplorerUrl } from '@/lib/contractAddresses';
 
 interface AdminProperty extends Property {
   active: boolean;
@@ -53,8 +53,10 @@ export default function AdminPage() {
     depositDividend,
     withdrawPrimarySales,
     primarySalesBalance,
+    allTransactions,
     isLoading,
     networkError,
+    chainId,
   } = useWallet();
 
   const [adminProperties, setAdminProperties] = useState<AdminProperty[]>(
@@ -68,7 +70,7 @@ export default function AdminPage() {
   const [isDepositing, setIsDepositing] = useState(false);
   const [newProperty, setNewProperty] = useState<NewProperty>(emptyNewProperty);
   const [createMsg, setCreateMsg] = useState('');
-  const [activeSection, setActiveSection] = useState<'properties' | 'dividends' | 'withdraw' | 'create'>(
+  const [activeSection, setActiveSection] = useState<'properties' | 'dividends' | 'withdraw' | 'transactions' | 'create'>(
     'properties'
   );
   const [withdrawForm, setWithdrawForm] = useState({ to: '', amount: '' });
@@ -250,6 +252,7 @@ export default function AdminPage() {
               { key: 'properties', label: '🏢 Properties' },
               { key: 'dividends', label: '💸 Deposit Dividend' },
               { key: 'withdraw', label: '🏦 Withdraw Funds' },
+              { key: 'transactions', label: '📋 Transactions' },
               { key: 'create', label: '➕ Create Property' },
             ] as { key: typeof activeSection; label: string }[]
           ).map(({ key, label }) => (
@@ -576,6 +579,80 @@ export default function AdminPage() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ---- TRANSACTIONS SECTION ---- */}
+        {activeSection === 'transactions' && (
+          <div className="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-700 flex items-center justify-between">
+              <h2 className="font-semibold text-white">All On-Chain Transactions</h2>
+              <span className="text-xs text-slate-500">{allTransactions.length} events</span>
+            </div>
+            {allTransactions.length === 0 ? (
+              <div className="px-5 py-12 text-center text-slate-500 text-sm">
+                {connected ? 'No transactions found on-chain.' : 'Connect wallet to load transactions.'}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-700 bg-slate-900/40">
+                      <th className="px-4 py-3 text-xs text-slate-500 font-medium text-left">Type</th>
+                      <th className="px-4 py-3 text-xs text-slate-500 font-medium text-left">Property</th>
+                      <th className="px-4 py-3 text-xs text-slate-500 font-medium text-left">Address</th>
+                      <th className="px-4 py-3 text-xs text-slate-500 font-medium text-right">Tokens</th>
+                      <th className="px-4 py-3 text-xs text-slate-500 font-medium text-right">mUSDT</th>
+                      <th className="px-4 py-3 text-xs text-slate-500 font-medium text-center">Tx</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/50">
+                    {allTransactions.map((tx: OnChainTx) => {
+                      const propName = mockProperties.find(p => p.id === tx.propertyId)?.name ?? tx.propertyId;
+                      const explorerLink = chainId ? txExplorerUrl(chainId, tx.txHash) : null;
+                      const typeConfig: Record<OnChainTx['type'], { label: string; color: string }> = {
+                        primary_buy:       { label: 'Primary Buy',    color: 'bg-blue-500/20 text-blue-400' },
+                        secondary_buy:     { label: 'Secondary Buy',  color: 'bg-indigo-500/20 text-indigo-400' },
+                        listing_created:   { label: 'Listed',         color: 'bg-slate-500/20 text-slate-400' },
+                        listing_cancelled: { label: 'Cancelled',      color: 'bg-rose-500/20 text-rose-400' },
+                        dividend_deposit:  { label: 'Div. Deposit',   color: 'bg-emerald-500/20 text-emerald-400' },
+                        dividend_claim:    { label: 'Div. Claim',     color: 'bg-teal-500/20 text-teal-400' },
+                      };
+                      const { label, color } = typeConfig[tx.type];
+                      return (
+                        <tr key={`${tx.txHash}-${tx.type}`} className="hover:bg-slate-700/20 transition-colors">
+                          <td className="px-4 py-3">
+                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${color}`}>{label}</span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-300 text-xs">{propName || '—'}</td>
+                          <td className="px-4 py-3 text-slate-400 text-xs font-mono">
+                            {tx.address ? `${tx.address.slice(0, 6)}...${tx.address.slice(-4)}` : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right text-white text-xs">
+                            {tx.tokenAmount > 0n ? Number(tx.tokenAmount).toLocaleString() : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right text-emerald-400 text-xs">
+                            {tx.musdtAmount > 0n
+                              ? (Number(tx.musdtAmount) / 1e6).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {explorerLink ? (
+                              <a href={explorerLink} target="_blank" rel="noopener noreferrer"
+                                className="text-xs text-blue-400 hover:text-blue-300 font-mono">
+                                {tx.txHash.slice(0, 8)}…
+                              </a>
+                            ) : (
+                              <span className="text-xs text-slate-600 font-mono">{tx.txHash.slice(0, 8)}…</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
