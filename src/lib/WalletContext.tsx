@@ -183,8 +183,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         seen.add(tokenId);
 
         // Already in mockData — update remaining supply from chain
+        // Skip if mockData marks it sold_out: that's an intentional simulation,
+        // and the contract may still report full supply if tokens were never sold on-chain.
         const existing = props.findIndex(p => p.id === `prop-00${tokenId}`);
         if (existing !== -1) {
+          if (props[existing].status === 'sold_out') continue;
           const listing = await marketplace.primaryListings(tokenId) as { remainingSupply: bigint };
           props[existing] = {
             ...props[existing],
