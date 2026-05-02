@@ -57,6 +57,8 @@ export default function AdminPage() {
     createPropertyOnChain,
     primarySalesBalance,
     allTransactions,
+    mUSDTBalance,
+    mUSDTBalanceFormatted,
     isLoading,
     networkError,
     chainId,
@@ -399,10 +401,14 @@ export default function AdminPage() {
           <div className="max-w-xl">
             <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
               <h2 className="font-semibold text-white mb-1">Deposit Dividend</h2>
-              <p className="text-slate-500 text-sm mb-6">
+              <p className="text-slate-500 text-sm mb-3">
                 Distribute rental income or profit share to all token holders of a property.
                 Calls <code className="text-slate-400">depositDividend</code> on the DividendVault contract.
               </p>
+              <div className="bg-slate-900 rounded-lg px-4 py-2.5 mb-4 flex justify-between items-center">
+                <span className="text-xs text-slate-500">Your mUSDT Balance</span>
+                <span className="text-sm font-semibold text-emerald-400">{mUSDTBalanceFormatted} mUSDT</span>
+              </div>
 
               <div className="space-y-4">
                 <div>
@@ -423,20 +429,34 @@ export default function AdminPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm text-slate-400 mb-1.5">
-                    Amount (mUSDT)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={dividendForm.amount}
-                    onChange={(e) =>
-                      setDividendForm((prev) => ({ ...prev, amount: e.target.value }))
-                    }
-                    placeholder="e.g. 5000.00"
-                    className="w-full bg-slate-900 border border-slate-600 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 placeholder-slate-600"
-                  />
+                  <label className="block text-sm text-slate-400 mb-1.5">Amount (mUSDT)</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={dividendForm.amount}
+                      onChange={(e) =>
+                        setDividendForm((prev) => ({ ...prev, amount: e.target.value }))
+                      }
+                      placeholder="e.g. 1000.00"
+                      className="flex-1 bg-slate-900 border border-slate-600 text-white rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 placeholder-slate-600"
+                    />
+                    <button
+                      onClick={() => setDividendForm((prev) => ({
+                        ...prev,
+                        amount: (Number(mUSDTBalance) / 1e6).toFixed(2),
+                      }))}
+                      className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs rounded-lg transition-colors whitespace-nowrap"
+                    >
+                      Max
+                    </button>
+                  </div>
+                  {dividendForm.amount && parseFloat(dividendForm.amount) > Number(mUSDTBalance) / 1e6 && (
+                    <p className="text-xs text-rose-400 mt-1">
+                      Exceeds your balance of {mUSDTBalanceFormatted} mUSDT
+                    </p>
+                  )}
                 </div>
 
                 {dividendForm.amount && parseFloat(dividendForm.amount) > 0 && (
